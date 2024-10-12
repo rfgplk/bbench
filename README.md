@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/ddff98b7-a390-43a7-86b3-91ef5e4da6be" alt="fuzzy_logo" width="200"/>
-
+  <img src="https://github.com/user-attachments/assets/5b1d74ee-d7f7-4e2a-8289-91d516d34065" alt="bbench_logo_384" width="300"/>
+  
 # bbench
 ### a lightweight Linux performance event benchmarking library
 </div>
