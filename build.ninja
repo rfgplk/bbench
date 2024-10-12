@@ -1,0 +1,42 @@
+# build.ninja
+timer = /usr/bin/time -p
+compiler_gnu = g++
+compiler_llvm = clang++
+
+
+cflags_debug = -g -march=native
+cflags_optimizations = -Ofast -mavx2 -mbmi -march=native
+
+# annoying but works
+cflags_warn_all_llvm = -Weverything
+cflags_warn_base = -Wall -Wextra -Wpedantic
+cflags_warn_options = -Wno-cpp -Wunused -Wshadow -Wconversion -Wcast-qual -Wconversion-null -Woverlength-strings -Wpointer-arith -Wunused-local-typedefs -Wunused-result -Wvarargs -Wvla -Wwrite-strings
+cflags_warn_ignore = -Wno-implicit-fallthrough -Wno-sign-conversion
+
+cflags_ext = -fopenmp -fext-numeric-literals -ffast-math -flto -fdiagnostics-color=always
+cflags_ext_llvm = -fopenmp -ffast-math -flto -fdiagnostics-color=always
+
+
+
+
+cflags_gnu_debug =  -std=c++23 $cflags_debug $cflags_warn_base $cflags_warn_options $cflags_warn_ignore $cflags_ext
+cflags_gnu =  -std=c++23 $cflags_optimizations $cflags_warn_base $cflags_warn_options $cflags_warn_ignore $cflags_ext
+cflags_llvm =  -std=c++23 $cflags_optimizations $cflags_warn_all_llvm $cflags_ext_llvm
+
+
+clibs_location = -L./libs
+clibs_includes = -Isrc
+
+clibs_static = -static-libstdc++
+build_directory = bin
+
+rule cc_compile_cmnd
+  command = mkdir -p bin && echo -e "\n\n\033[1;32mBuilding:\033[0m $out" && $timer $compiler_gnu $cflags_gnu $clibs_location $clibs_includes $in -o $build_directory/$out;
+
+rule cc_compile_cmnd_debug
+  command = mkdir -p bin && echo -e "\n\n\033[1;32mBuilding:\033[0m $out" && $timer $compiler_gnu $cflags_gnu_debug $clibs_location $clibs_includes $in -o $build_directory/$out;
+
+
+build perf_test: cc_compile_cmnd tests/perf.cpp
+build btime: cc_compile_cmnd tools/btime.cpp
+build bbench: cc_compile_cmnd tools/bbench.cpp
