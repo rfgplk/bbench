@@ -16,30 +16,30 @@
 #include <unistd.h>
 
 #include <concepts>
+#include <iostream>
 #include <type_traits>
 
 #include "time.hpp"
 
-static long
-perf_event(struct perf_event_attr &event, pid_t pid, int cpu, int group_fd, unsigned long flags)
-{
+static long perf_event(struct perf_event_attr &event, pid_t pid, int cpu,
+                       int group_fd, unsigned long flags) {
   return syscall(SYS_perf_event_open, &event, pid, cpu, group_fd, flags);
 };
 
-static long
-perf_event_this(struct perf_event_attr &event)
-{
+static long perf_event_this(struct perf_event_attr &event) {
   return syscall(SYS_perf_event_open, &event, 0, -1, -1, 0);
 };
 
-static long
-perf_event_pid(struct perf_event_attr &event, pid_t pid)
-{
+// attach to leader group
+static long perf_event_attach(int fd, struct perf_event_attr &event) {
+  return syscall(SYS_perf_event_open, &event, 0, -1, fd, 0);
+};
+
+static long perf_event_pid(struct perf_event_attr &event, pid_t pid) {
   return syscall(SYS_perf_event_open, &event, pid, -1, -1, 0);
 };
 
-namespace bbench
-{
+namespace bbench {
 
 enum class kernel_clock_types : uint64_t {
   hardware = PERF_TYPE_HARDWARE,
@@ -48,8 +48,7 @@ enum class kernel_clock_types : uint64_t {
   cache = PERF_TYPE_HW_CACHE
 };
 
-namespace options
-{
+namespace options {
 
 enum class hardware : uint64_t {
   cpu_cycles = PERF_COUNT_HW_CPU_CYCLES,
@@ -90,7 +89,7 @@ enum class cache : uint64_t {
   local_access = PERF_COUNT_HW_CACHE_NODE,
   none
 };
-};     // namespace options
+}; // namespace options
 
 // struct perf_event_attr {
 //   __u32 type;   /* Type of event */
@@ -185,231 +184,231 @@ enum class cache : uint64_t {
 //         __u32 __reserved_3;         /* align to u64 */
 //       __u64 sig_data;             /* user data for sigtrap */
 
-struct time_userland {
-};
-struct time_kernelland {
-};
-struct time_vmland {
-};
-struct time_everyland {
-};
+struct time_userland {};
+struct time_kernelland {};
+struct time_vmland {};
+struct time_everyland {};
 
 template <class T, kernel_clock_types R> struct kernel_clock {
   int e_fd;
   struct perf_event_attr event;
-  ~kernel_clock(void) { ::close(e_fd); }
-
+  ~kernel_clock(void) {
+    if (e_fd != -1)
+      ::close(e_fd);
+  }
+  kernel_clock(const kernel_clock &) = delete;
+  kernel_clock(kernel_clock &&o) : e_fd(o.e_fd), event(std::move(o.event)) {
+    o.e_fd = -1;
+  }
+  auto __get_event(void) const { return event; }
   template <class P>
-    requires(std::same_as<P, options::hardware> or std::same_as<P, options::software> or std::same_as<P, options::cache>)
-  kernel_clock(P e_type)
-  {
+    requires(std::same_as<P, options::hardware> or
+             std::same_as<P, options::software> or
+             std::same_as<P, options::cache>)
+  kernel_clock(P e_type) : e_fd(-1) {
     std::memset(&event, 0, sizeof(event));
-
-    if constexpr ( std::same_as<T, time_everyland> ) {
+    // event.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
+    if constexpr (std::same_as<T, time_everyland>) {
       event.size = sizeof(event);
-      if constexpr ( R == kernel_clock_types::hardware ) {
+      if constexpr (R == kernel_clock_types::hardware) {
         event.type = PERF_TYPE_HARDWARE;
         event.disabled = 1;
         event.pinned = 1;
 
-        if constexpr ( std::is_same_v<P, options::hardware> )
+        if constexpr (std::is_same_v<P, options::hardware>)
           event.config = static_cast<__u64>(e_type);
       }
-      if constexpr ( R == kernel_clock_types::software ) {
+      if constexpr (R == kernel_clock_types::software) {
         event.type = PERF_TYPE_SOFTWARE;
         event.disabled = 1;
         event.pinned = 1;
 
         event.exclude_hv = 1;
 
-        if constexpr ( std::is_same_v<P, options::software> )
+        if constexpr (std::is_same_v<P, options::software>)
           event.config = static_cast<__u64>(e_type);
       }
-      if constexpr ( R == kernel_clock_types::tracepoint ) {
+      if constexpr (R == kernel_clock_types::tracepoint) {
         event.type = PERF_TYPE_TRACEPOINT;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_hv = 1;
       }
-      if constexpr ( R == kernel_clock_types::cache ) {
+      if constexpr (R == kernel_clock_types::cache) {
         event.type = PERF_TYPE_HW_CACHE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_hv = 1;
-        if constexpr ( std::is_same_v<P, options::cache> )
+        if constexpr (std::is_same_v<P, options::cache>)
           event.config = static_cast<__u64>(e_type);
       }
     }
 
-    if constexpr ( std::same_as<T, time_kernelland> ) {
+    if constexpr (std::same_as<T, time_kernelland>) {
       event.size = sizeof(event);
-      if constexpr ( R == kernel_clock_types::hardware ) {
+      if constexpr (R == kernel_clock_types::hardware) {
         event.type = PERF_TYPE_HARDWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_hv = 1;
 
-        if constexpr ( std::is_same_v<P, options::hardware> )
+        if constexpr (std::is_same_v<P, options::hardware>)
           event.config = static_cast<__u64>(e_type);
       }
-      if constexpr ( R == kernel_clock_types::software ) {
+      if constexpr (R == kernel_clock_types::software) {
         event.type = PERF_TYPE_SOFTWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_hv = 1;
-        if constexpr ( std::is_same_v<P, options::software> )
+        if constexpr (std::is_same_v<P, options::software>)
           event.config = static_cast<__u64>(e_type);
       }
-      if constexpr ( R == kernel_clock_types::tracepoint ) {
+      if constexpr (R == kernel_clock_types::tracepoint) {
         event.type = PERF_TYPE_TRACEPOINT;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_hv = 1;
       }
-      if constexpr ( R == kernel_clock_types::cache ) {
+      if constexpr (R == kernel_clock_types::cache) {
         event.type = PERF_TYPE_HW_CACHE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_hv = 1;
-        if constexpr ( std::is_same_v<P, options::cache> )
+        if constexpr (std::is_same_v<P, options::cache>)
           event.config = static_cast<__u64>(e_type);
       }
     }
 
-    if constexpr ( std::same_as<T, time_userland> ) {
+    if constexpr (std::same_as<T, time_userland>) {
       event.size = sizeof(event);
-      if constexpr ( R == kernel_clock_types::hardware ) {
+      if constexpr (R == kernel_clock_types::hardware) {
         event.type = PERF_TYPE_HARDWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_kernel = 1;
         event.exclude_hv = 1;
 
-        if constexpr ( std::is_same_v<P, options::hardware> )
+        if constexpr (std::is_same_v<P, options::hardware>)
           event.config = static_cast<__u64>(e_type);
       }
-      if constexpr ( R == kernel_clock_types::software ) {
+      if constexpr (R == kernel_clock_types::software) {
         event.type = PERF_TYPE_SOFTWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_kernel = 1;
         event.exclude_hv = 1;
-        if constexpr ( std::is_same_v<P, options::software> )
+        if constexpr (std::is_same_v<P, options::software>)
           event.config = static_cast<__u64>(e_type);
       }
-      if constexpr ( R == kernel_clock_types::tracepoint ) {
+      if constexpr (R == kernel_clock_types::tracepoint) {
         event.type = PERF_TYPE_TRACEPOINT;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_kernel = 1;
         event.exclude_hv = 1;
       }
-      if constexpr ( R == kernel_clock_types::cache ) {
+      if constexpr (R == kernel_clock_types::cache) {
         event.type = PERF_TYPE_HW_CACHE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_kernel = 1;
         event.exclude_hv = 1;
-        if constexpr ( std::is_same_v<P, options::cache> )
+        if constexpr (std::is_same_v<P, options::cache>)
           event.config = static_cast<__u64>(e_type);
       }
     }
 
-    if constexpr ( std::same_as<T, time_vmland> ) {
+    if constexpr (std::same_as<T, time_vmland>) {
       event.size = sizeof(event);
-      if constexpr ( R == kernel_clock_types::hardware ) {
+      if constexpr (R == kernel_clock_types::hardware) {
         event.type = PERF_TYPE_HARDWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_kernel = 1;
 
-        if constexpr ( std::is_same_v<P, options::hardware> )
+        if constexpr (std::is_same_v<P, options::hardware>)
           event.config = static_cast<__u64>(e_type);
       }
-      if constexpr ( R == kernel_clock_types::software ) {
+      if constexpr (R == kernel_clock_types::software) {
         event.type = PERF_TYPE_SOFTWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_kernel = 1;
-        if constexpr ( std::is_same_v<P, options::software> )
+        if constexpr (std::is_same_v<P, options::software>)
           event.config = static_cast<__u64>(e_type);
       }
-      if constexpr ( R == kernel_clock_types::tracepoint ) {
+      if constexpr (R == kernel_clock_types::tracepoint) {
         event.type = PERF_TYPE_TRACEPOINT;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_kernel = 1;
       }
-      if constexpr ( R == kernel_clock_types::cache ) {
+      if constexpr (R == kernel_clock_types::cache) {
         event.type = PERF_TYPE_HW_CACHE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_kernel = 1;
-        if constexpr ( std::is_same_v<P, options::cache> )
+        if constexpr (std::is_same_v<P, options::cache>)
           event.config = static_cast<__u64>(e_type);
       }
     }
   }
 
-  int
-  reopen(pid_t pid)
-  {
+  int reopen(pid_t pid) {
+    if(e_fd != -1)
+      ::close(e_fd);
+    e_fd = static_cast<int>(perf_event_pid(event, pid)); // stop the complaining
+    if (e_fd == -1)
+      return -1; // ERROR
+    return e_fd;
+  }
+  int reopen(void) {
     ::close(e_fd);
-    e_fd = static_cast<int>(perf_event_pid(event, pid));     // stop the complaining
-    if ( e_fd == -1 )
-      return -1;     // ERROR
+    e_fd = static_cast<int>(perf_event_this(event)); // stop the complaining
+    if (e_fd == -1)
+      return -1; // ERROR
     return e_fd;
   }
-  int
-  reopen(void)
-  {
-    ::close(e_fd);
-    e_fd = static_cast<int>(perf_event_this(event));     // stop the complaining
-    if ( e_fd == -1 )
-      return -1;     // ERROR
+  int open(pid_t pid) {
+    e_fd = static_cast<int>(perf_event_pid(event, pid)); // stop the complaining
+    if (e_fd == -1)
+      return -1; // ERROR
     return e_fd;
   }
-  int
-  open(pid_t pid)
-  {
-    e_fd = static_cast<int>(perf_event_pid(event, pid));     // stop the complaining
-    if ( e_fd == -1 )
-      return -1;     // ERROR
-    return e_fd;
-  }
-  int
-  open(void)
-  {
-    e_fd = static_cast<int>(perf_event_this(event));     // stop the complaining
-    if ( e_fd == -1 )
-      return -1;     // ERROR
+  int open(void) {
+    e_fd = static_cast<int>(perf_event_this(event)); // stop the complaining
+    if (e_fd == -1)
+      return -1; // ERROR
     return e_fd;
   }
   template <typename X = T>
-  inline __attribute__((always_inline)) void
-  start(void)
-  {
+  inline __attribute__((always_inline)) void start(void) {
     ::ioctl(e_fd, PERF_EVENT_IOC_RESET, 0);
     ::ioctl(e_fd, PERF_EVENT_IOC_ENABLE, 0);
   }
-
   template <typename X = T>
-  inline __attribute__((always_inline)) void
-  stop(void)
-  {
+  inline __attribute__((always_inline)) void start_as_leader(void) {
+    ::ioctl(e_fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);
+    ::ioctl(e_fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);
+  }
+  template <typename X = T>
+  inline __attribute__((always_inline)) void stop(void) {
     ::ioctl(e_fd, PERF_EVENT_IOC_DISABLE, 0);
   }
-  long long
-  read(void)
-  {
+
+  template <typename X = T>
+  inline __attribute__((always_inline)) void stop_as_leader(void) {
+    ::ioctl(e_fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
+  }
+  long long read(void) {
     long long x = 0;
     ::read(e_fd, &x, sizeof(x));
     return x;
@@ -433,119 +432,94 @@ enum class system_clocks : clockid_t {
 template <system_clocks C = system_clocks::realtime> struct system_clock {
   struct timespec time_begin;
   struct timespec time_end;
-  system_clock(options::hardware)
-  {
+  system_clock(options::hardware) {
     std::memset(&time_begin, 0x0, sizeof(timespec));
     std::memset(&time_end, 0x0, sizeof(timespec));
-    if ( ::clock_gettime((clockid_t)C, &time_begin) == -1 )
+    if (::clock_gettime((clockid_t)C, &time_begin) == -1)
       throw std::runtime_error("bbench clock failed to get time");
   }
-  system_clock()
-  {
+  system_clock() {
     std::memset(&time_begin, 0x0, sizeof(timespec));
     std::memset(&time_end, 0x0, sizeof(timespec));
-    if ( ::clock_gettime((clockid_t)C, &time_begin) == -1 )
+    if (::clock_gettime((clockid_t)C, &time_begin) == -1)
       throw std::runtime_error("bbench clock failed to get time");
   }
-  inline __attribute__((always_inline)) void
-  start(void)
-  {
-    if ( ::clock_gettime((clockid_t)C, &time_begin) == -1 )
+  inline __attribute__((always_inline)) void start(void) {
+    if (::clock_gettime((clockid_t)C, &time_begin) == -1)
       throw std::runtime_error("bbench clock failed to get time");
   }
-  inline __attribute__((always_inline)) auto
-  start_get(void) -> timespec
-  {
-    if ( ::clock_gettime((clockid_t)C, &time_begin) == -1 )
+  inline __attribute__((always_inline)) auto start_get(void) -> timespec {
+    if (::clock_gettime((clockid_t)C, &time_begin) == -1)
       throw std::runtime_error("bbench clock failed to get time");
     return time_begin;
   }
-  inline __attribute__((always_inline)) void
-  stop(void)
-  {
-    if ( ::clock_gettime((clockid_t)C, &time_end) == -1 )
+  inline __attribute__((always_inline)) void stop(void) {
+    if (::clock_gettime((clockid_t)C, &time_end) == -1)
       throw std::runtime_error("bbench clock failed to get time");
   }
-  inline __attribute__((always_inline)) auto
-  stop_get(void) -> timespec
-  {
-    if ( ::clock_gettime((clockid_t)C, &time_end) == -1 )
+  inline __attribute__((always_inline)) auto stop_get(void) -> timespec {
+    if (::clock_gettime((clockid_t)C, &time_end) == -1)
       throw std::runtime_error("bbench clock failed to get time");
     return time_end;
   }
-  inline __attribute__((always_inline)) static auto
-  now(void) -> double
-  {
+  inline __attribute__((always_inline)) static auto now(void) -> double {
     struct timespec t;
-    if ( ::clock_gettime((clockid_t)C, &t) == -1 )
+    if (::clock_gettime((clockid_t)C, &t) == -1)
       throw std::runtime_error("bbench clock failed to get time");
     auto sec = t.tv_sec;
     auto msec = (t.tv_nsec) / 1000000000;
     return static_cast<double>(sec) + static_cast<double>(msec);
   }
-  auto
-  read(const timespec &t) -> double
-  {
+  auto read(const timespec &t) -> double {
     auto sec = t.tv_sec - time_begin.tv_sec;
     auto msec = (t.tv_nsec - time_begin.tv_nsec) / 1000000000;
     return static_cast<double>(sec) + static_cast<double>(msec);
   }
-  auto
-  read_ms(const timespec &t) -> double
-  {
+  auto read_ms(const timespec &t) -> double {
     auto sec = t.tv_sec - time_begin.tv_sec;
     auto msec = (t.tv_nsec - time_begin.tv_nsec) / 1000000;
-    return chrono::milliseconds(static_cast<double>(sec)) + static_cast<double>(msec);
+    return chrono::milliseconds(static_cast<double>(sec)) +
+           static_cast<double>(msec);
   }
-  auto
-  read(const timespec &t, const timespec &ts) -> double
-  {
+  auto read(const timespec &t, const timespec &ts) -> double {
     auto sec = t.tv_sec - ts.tv_sec;
     auto msec = (t.tv_nsec - ts.tv_nsec) / 1000000000;
     return static_cast<double>(sec) + static_cast<double>(msec);
   }
-  auto
-  read_ms(const timespec &t, const timespec &ts) -> double
-  {
+  auto read_ms(const timespec &t, const timespec &ts) -> double {
     auto sec = t.tv_sec - ts.tv_sec;
     auto msec = (t.tv_nsec - ts.tv_nsec) / 1000000;
-    return chrono::milliseconds(static_cast<double>(sec)) + static_cast<double>(msec);
+    return chrono::milliseconds(static_cast<double>(sec)) +
+           static_cast<double>(msec);
   }
-  auto
-  read(void) -> double
-  {
+  auto read(void) -> double {
     auto sec = time_end.tv_sec - time_begin.tv_sec;
     auto msec = (time_end.tv_nsec - time_begin.tv_nsec) / 1000000000;
     return static_cast<double>(sec) + static_cast<double>(msec);
   }
-  auto
-  read_ds(void) -> double
-  {
+  auto read_ds(void) -> double {
     auto sec = (time_end.tv_sec - time_begin.tv_sec) / 10;
     auto msec = (time_end.tv_nsec - time_begin.tv_nsec) / 100000000;
     return static_cast<double>(sec) + static_cast<double>(msec);
   }
-  auto
-  read_ms(void) -> double
-  {
+  auto read_ms(void) -> double {
     auto sec = time_end.tv_sec - time_begin.tv_sec;
     auto msec = (time_end.tv_nsec - time_begin.tv_nsec) / 1000000;
-    return chrono::milliseconds(static_cast<double>(sec)) + static_cast<double>(msec);
+    return chrono::milliseconds(static_cast<double>(sec)) +
+           static_cast<double>(msec);
   }
-  auto
-  read_us(void) -> double
-  {
+  auto read_us(void) -> double {
     auto sec = time_end.tv_sec - time_begin.tv_sec;
     auto msec = (time_end.tv_nsec - time_begin.tv_nsec) / 1000;
-    return chrono::microseconds(static_cast<double>(sec)) + static_cast<double>(msec);
+    return chrono::microseconds(static_cast<double>(sec)) +
+           static_cast<double>(msec);
   }
-  auto
-  read_ns(void) -> double
-  {
+  auto read_ns(void) -> double {
     auto sec = time_end.tv_sec - time_begin.tv_sec;
     auto msec = (time_end.tv_nsec - time_begin.tv_nsec);
-    return chrono::nanoseconds(static_cast<double>(sec)) + static_cast<double>(msec);
+    return chrono::nanoseconds(static_cast<double>(sec)) +
+           static_cast<double>(msec);
   }
 };
 
-};
+}; // namespace bbench

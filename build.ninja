@@ -11,7 +11,7 @@ cflags_optimizations = -Ofast -mavx2 -mbmi -march=native
 cflags_warn_all_llvm = -Weverything
 cflags_warn_base = -Wall -Wextra -Wpedantic
 cflags_warn_options = -Wno-cpp -Wunused -Wshadow -Wconversion -Wcast-qual -Wconversion-null -Woverlength-strings -Wpointer-arith -Wunused-local-typedefs -Wunused-result -Wvarargs -Wvla -Wwrite-strings
-cflags_warn_ignore = -Wno-implicit-fallthrough -Wno-sign-conversion
+cflags_warn_ignore = -Wno-implicit-fallthrough -Wno-sign-conversion -Wno-float-conversion
 
 cflags_ext = -fopenmp -fext-numeric-literals -ffast-math -flto -fdiagnostics-color=always
 cflags_ext_llvm = -fopenmp -ffast-math -flto -fdiagnostics-color=always
@@ -38,5 +38,6 @@ rule cc_compile_cmnd_debug
 
 
 build perf_test: cc_compile_cmnd tests/perf.cpp
+build batch_test: cc_compile_cmnd tests/batch.cpp
 build btime: cc_compile_cmnd tools/btime.cpp
 build bbench: cc_compile_cmnd tools/bbench.cpp

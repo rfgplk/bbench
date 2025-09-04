@@ -6,13 +6,18 @@
 
 #pragma once
 
-namespace bbench
-{
+#include <string>
+
+#include "clock.hpp"
+#include "perf.hpp"
+
+namespace bbench {
 // Util Functions
 // moved here for convenience
 // main container for storing all benchmark data from benchmark()
 struct benchmark_t {
-  double time;     // heh
+  std::string name;
+  double time; // heh
   long long cycles;
   long long instructions;
   long long cache_misses;
@@ -30,33 +35,29 @@ struct benchmark_t {
   long long bpu;
 };
 
-auto
-per_op(double x, long long a)
-{
-  return x / static_cast<double>(a);
-}
+auto per_op(double x, long long a) { return x / static_cast<double>(a); }
 
-auto
-per_cycle(const benchmark_t &b)
-{
+auto per_cycle(const benchmark_t &b) {
   return static_cast<double>((double)b.cycles / static_cast<double>(b.time));
 }
 
-auto
-per_instruction(const benchmark_t &b)
-{
-  return static_cast<double>((double)b.instructions / static_cast<double>(b.time));
+auto per_instruction(const benchmark_t &b) {
+  return static_cast<double>((double)b.instructions /
+                             static_cast<double>(b.time));
 }
 
-auto
-miss_percent(const benchmark_t &b)
-{
-  return static_cast<double>((double)b.branch_misses / (double)b.total_branches);
+auto miss_percent(const benchmark_t &b) {
+  return static_cast<double>((double)b.branch_misses /
+                             (double)b.total_branches);
 }
 
-auto
-cycles_per_instruction(const benchmark_t &b)
-{
+auto cycles_per_instruction(const benchmark_t &b) {
   return static_cast<double>((double)b.cycles / (double)b.instructions);
 }
-};
+
+template <typename T> void perf_init_leader(T &&leader) {
+  hardware_cycles a;
+  a.start_as_leader();
+}
+
+}; // namespace bbench
