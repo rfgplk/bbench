@@ -158,7 +158,7 @@ int main(int argc, char **argv) {
     } else
       bbench::print("\033[34m", "Results for: ", "\033[0m", b.name);
     bbench::print("\033[34m", "Total time elapsed:   ", "\033[0m", b.time,
-                  " ms");
+                  " microseconds");
     bbench::print("\033[34m", "Cycles Spent:         ", "\033[0m", b.cycles);
     bbench::print("\033[34m", "Total Instructions:   ", "\033[0m",
                   b.instructions);
