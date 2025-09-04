@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
 
   if (argc < 2)
     return -1;
-  size_t n_times = 0;
+  size_t n_times = 1;
 
   cargs::parser arg(argc, argv);
   auto &&flags = arg.list();
