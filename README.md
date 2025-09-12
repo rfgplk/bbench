@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/5b1d74ee-d7f7-4e2a-8289-91d516d34065" alt="bbench_logo_384" width="300"/>
+  <img src="https://github.com/user-attachments/assets/9d07b433-174a-4a63-a5f7-404c0224b0f4" alt="bbench_logo_384" width="300"/>
   
 # bbench
 ### a lightweight Linux performance event benchmarking library
