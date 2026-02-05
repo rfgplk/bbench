@@ -3,7 +3,7 @@
 
 <div align="left">
 
-### bbench
+### *bbench* 🪑
 
 #### a lightweight Linux performance event benchmarking library
 
