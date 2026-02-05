@@ -1,11 +1,23 @@
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/9d07b433-174a-4a63-a5f7-404c0224b0f4" alt="bbench_logo_384" width="300"/>
+<img align="left" src="https://github.com/user-attachments/assets/9d07b433-174a-4a63-a5f7-404c0224b0f4" alt="bbench_logo_384" width="300"/>
   
-# bbench
-### a lightweight Linux performance event benchmarking library
-</div>
+
+<div align="left">
+
+### bbench
+
+#### a lightweight Linux performance event benchmarking library
 
 bbench is a *lightweight*, **intuitive**, and ***logical*** benchmarking library, written in C++20. 
+
+</div>
+
+------
+
+<br/>
+
+<br/>
+
+
 
 The goal of this library is to provide simplistic yet useful functions for *timing and profiling* performance **critical** code. The library uses specific performance monitoring facilities (via the kernel) to extract all the relevant information you would ever need without being overbearing. Most bbench code is evaluated and instantiated at compile time, meaning this is practically the *lightest (and smallest) possible implementation* of benchmarking functionality. Has minimal (almost non-existent) runtime overhead. It can be used either as a library or a compiled binary (in case you would like to benchmark precompiled code). 
 
