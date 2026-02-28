@@ -1,4 +1,4 @@
-<img align="left" src="https://github.com/user-attachments/assets/9d07b433-174a-4a63-a5f7-404c0224b0f4" alt="bbench_logo_384" width="300"/>
+<img align="left" src="https://github.com/user-attachments/assets/12679d26-9411-4eaa-be22-585e1e44b480" alt="bbench_logo_384" width="300"/>
   
 
 <div align="left">
