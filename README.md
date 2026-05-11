@@ -234,7 +234,7 @@ bbench is a header only library. Just copy all files from `src/` and include `sr
 - [ ] C bindings
 
 ## Misc
-no external dependencies, requires C++20, tested with g++.
+requires micron corelib, requires C++20, tested with g++; stl_old branch contains STL compliant code
 Requires at least Linux 2.6.
 bbench needs the following headers (and associated .so) to compile properly (normally are distributed with every standard Linux/C++ distribution).
 
