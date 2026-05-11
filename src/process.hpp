@@ -6,59 +6,41 @@
 
 #pragma once
 
-#include <signal.h>
-#include <spawn.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
-#include <concepts>
-#include <exception>
-#include <stdexcept>
-#include <type_traits>
-
-#include <string>
-#include <vector>
+#include <micron/bits/__exceptions.hpp>
+#include <micron/concepts.hpp>
+#include <micron/except.hpp>
+#include <micron/linux/io.hpp>
+#include <micron/linux/sys/exec.hpp>
+#include <micron/linux/sys/fcntl.hpp>
+#include <micron/memory/actions.hpp>
+#include <micron/proc.hpp>
+#include <micron/types.hpp>
+#include <micron/vector.hpp>
 
 namespace bbench
 {
 
-// swap out for whatever underlying container you want to use
-template <typename T> using __impl_vector = std::vector<T>;
-// template <typename T> using __impl_string = std::string<T>;
+template <typename T> using __impl_vector = micron::vector<T>;
 
-template <typename T>
-concept is_string = requires(T t) {
-  { t.c_str() } -> std::same_as<const char *>;
-  { t.data() } -> std::same_as<typename T::pointer>;
-  { t.size() } -> std::convertible_to<size_t>;
-  { t.begin() } -> std::same_as<typename T::iterator>;
-  { t.end() } -> std::same_as<typename T::iterator>;
-  { t.cbegin() } -> std::same_as<typename T::const_iterator>;
-  { t.cend() } -> std::same_as<typename T::const_iterator>;
-};
+using micron::is_string;
 
 // fork and run process at path location specified by T
 template <bool W = false, is_string T, is_string... R>
 int
 process(const T &t, const R &...args)
 {
-  pid_t pid;
+  micron::pid_t pid = 0;
   int status = 0;
-  posix_spawnattr_t flags;
-  if ( posix_spawnattr_init(&flags) != 0 ) {
-    throw std::runtime_error("micron process failed to init spawnattrs");
-  }
-  __impl_vector<char *> argv = { &t[0], nullptr };
+  __impl_vector<char *> argv;
+  argv.push_back(const_cast<char *>(t.c_str()));
+  argv.push_back(nullptr);
+  // insert each arg before the trailing nullptr (index == size - 1)
+  (argv.insert(argv.size() - 1, const_cast<char *>(args.c_str())), ...);
 
-  (argv.insert(argv.begin() + 1, &args[0]), ...);
-
-  if ( ::posix_spawn(&pid, t.c_str(), NULL, &flags, &argv[0], environ) ) {
-    throw std::runtime_error("micron process failed to start posix_spawn");
+  if ( micron::spawn(pid, t.c_str(), &argv[0], environ) ) {
+    micron::exc<micron::except::runtime_error>("micron process failed to start spawn");
   }
-  if constexpr ( W )
-    ::waitpid(pid, &status, 0);
+  if constexpr ( W ) micron::waitpid(pid, &status, 0);
   return pid;
 }
 
@@ -66,22 +48,52 @@ template <bool W = false, typename... R>
 int
 process(const char *t, const R *...args)
 {
-  pid_t pid;
+  micron::pid_t pid = 0;
   int status = 0;
-  posix_spawnattr_t flags;
-  if ( posix_spawnattr_init(&flags) != 0 ) {
-    throw std::runtime_error("micron process failed to init spawnattrs");
-  }
-  __impl_vector<char *> argv = { const_cast<char *>(t), nullptr };
+  __impl_vector<char *> argv;
+  argv.push_back(const_cast<char *>(t));
+  argv.push_back(nullptr);
+  (argv.insert(argv.size() - 1, const_cast<char *>(args)), ...);
 
-  (argv.insert(argv.begin() + 1, const_cast<char *>(args)), ...);
-
-  if ( ::posix_spawn(&pid, t, NULL, &flags, &argv[0], environ) ) {
-    throw std::runtime_error("micron process failed to start posix_spawn");
+  if ( micron::spawn(pid, t, &argv[0], environ) ) {
+    micron::exc<micron::except::runtime_error>("micron process failed to start spawn");
   }
-  if constexpr ( W )
-    ::waitpid(pid, &status, 0);
+  if constexpr ( W ) micron::waitpid(pid, &status, 0);
   return pid;
 }
 
-};
+template <typename F>
+inline int
+process_attach(const char *path, F &&attach_fn)
+{
+  int sync_pipe[2];
+  if ( micron::pipe2(sync_pipe, micron::posix::o_cloexec) < 0 )
+    micron::exc<micron::except::runtime_error>("bbench process_attach: pipe2 failed");
+
+  micron::pid_t pid = micron::fork();
+  if ( pid < 0 ) {
+    micron::close(sync_pipe[0]);
+    micron::close(sync_pipe[1]);
+    micron::exc<micron::except::runtime_error>("bbench process_attach: fork failed");
+  }
+
+  if ( pid == 0 ) {
+    micron::close(sync_pipe[1]);
+    char c = 0;
+    micron::posix::read(sync_pipe[0], &c, 1);
+    micron::close(sync_pipe[0]);
+
+    char *argv[2] = { const_cast<char *>(path), nullptr };
+    micron::posix::execve(path, argv, environ);
+    micron::posix::exit(127);
+  }
+
+  micron::close(sync_pipe[0]);
+  attach_fn(static_cast<int>(pid));
+  char go = 'g';
+  micron::posix::write(sync_pipe[1], &go, 1);
+  micron::close(sync_pipe[1]);
+  return static_cast<int>(pid);
+}
+
+};     // namespace bbench

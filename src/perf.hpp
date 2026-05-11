@@ -6,51 +6,70 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cstring>
 #include <linux/perf_event.h>
-#include <stdexcept>
-#include <sys/ioctl.h>
-#include <sys/syscall.h>
-#include <time.h>
-#include <unistd.h>
 
-#include <concepts>
-#include <iostream>
-#include <type_traits>
+#include <micron/bits/__exceptions.hpp>
+#include <micron/chrono.hpp>
+#include <micron/concepts.hpp>
+#include <micron/errno.hpp>
+#include <micron/except.hpp>
+#include <micron/linux/io.hpp>
+#include <micron/linux/sys/ioctl.hpp>
+#include <micron/memory/actions.hpp>
+#include <micron/memory/cmemory.hpp>
+#include <micron/syscall.hpp>
+#include <micron/type_traits.hpp>
+#include <micron/types.hpp>
 
-#include "time.hpp"
+static inline long
+__pe_call(long r)
+{
+  if ( r < 0 ) {
+    errno = static_cast<i32>(-r);
+    return -1;
+  }
+  return r;
+}
 
-static long perf_event(struct perf_event_attr &event, pid_t pid, int cpu,
-                       int group_fd, unsigned long flags) {
-  return syscall(SYS_perf_event_open, &event, pid, cpu, group_fd, flags);
+static long
+perf_event(struct perf_event_attr &event, pid_t pid, int cpu, int group_fd, unsigned long flags)
+{
+  return __pe_call(micron::syscall(SYS_perf_event_open, &event, pid, cpu, group_fd, flags));
 };
 
-static long perf_event_this(struct perf_event_attr &event) {
-  return syscall(SYS_perf_event_open, &event, 0, -1, -1, 0);
+static long
+perf_event_this(struct perf_event_attr &event)
+{
+  return __pe_call(micron::syscall(SYS_perf_event_open, &event, 0, -1, -1, 0));
 };
 
 // attach to leader group
-static long perf_event_attach(int fd, struct perf_event_attr &event) {
-  return syscall(SYS_perf_event_open, &event, 0, -1, fd, 0);
+static long
+perf_event_attach(int fd, struct perf_event_attr &event)
+{
+  return __pe_call(micron::syscall(SYS_perf_event_open, &event, 0, -1, fd, 0));
 };
 
-static long perf_event_pid(struct perf_event_attr &event, pid_t pid) {
-  return syscall(SYS_perf_event_open, &event, pid, -1, -1, 0);
+static long
+perf_event_pid(struct perf_event_attr &event, pid_t pid)
+{
+  return __pe_call(micron::syscall(SYS_perf_event_open, &event, pid, -1, -1, 0));
 };
 
-namespace bbench {
+namespace bbench
+{
 
-enum class kernel_clock_types : uint64_t {
+enum class kernel_clock_types : u64 {
   hardware = PERF_TYPE_HARDWARE,
   software = PERF_TYPE_SOFTWARE,
   tracepoint = PERF_TYPE_TRACEPOINT,
   cache = PERF_TYPE_HW_CACHE
 };
 
-namespace options {
+namespace options
+{
 
-enum class hardware : uint64_t {
+enum class hardware : u64 {
   cpu_cycles = PERF_COUNT_HW_CPU_CYCLES,
   total_inst = PERF_COUNT_HW_INSTRUCTIONS,
   cache_misses = PERF_COUNT_HW_CACHE_MISSES,
@@ -63,7 +82,7 @@ enum class hardware : uint64_t {
   none
 };
 
-enum class software : uint64_t {
+enum class software : u64 {
   cpu_clock = PERF_COUNT_SW_CPU_CLOCK,
   tasks = PERF_COUNT_SW_TASK_CLOCK,
   page_faults = PERF_COUNT_SW_PAGE_FAULTS,
@@ -79,7 +98,7 @@ enum class software : uint64_t {
   none
 };
 
-enum class cache : uint64_t {
+enum class cache : u64 {
   level1d = PERF_COUNT_HW_CACHE_L1D,
   level1t = PERF_COUNT_HW_CACHE_L1I,
   last_level = PERF_COUNT_HW_CACHE_LL,
@@ -87,439 +106,481 @@ enum class cache : uint64_t {
   instr_tlb = PERF_COUNT_HW_CACHE_ITLB,
   branch = PERF_COUNT_HW_CACHE_BPU,
   local_access = PERF_COUNT_HW_CACHE_NODE,
+
+  level1d_miss = static_cast<u64>(PERF_COUNT_HW_CACHE_L1D) | (static_cast<u64>(PERF_COUNT_HW_CACHE_RESULT_MISS) << 16),
+  level1t_miss = static_cast<u64>(PERF_COUNT_HW_CACHE_L1I) | (static_cast<u64>(PERF_COUNT_HW_CACHE_RESULT_MISS) << 16),
+  last_level_miss = static_cast<u64>(PERF_COUNT_HW_CACHE_LL) | (static_cast<u64>(PERF_COUNT_HW_CACHE_RESULT_MISS) << 16),
+  data_tlb_miss = static_cast<u64>(PERF_COUNT_HW_CACHE_DTLB) | (static_cast<u64>(PERF_COUNT_HW_CACHE_RESULT_MISS) << 16),
+  instr_tlb_miss = static_cast<u64>(PERF_COUNT_HW_CACHE_ITLB) | (static_cast<u64>(PERF_COUNT_HW_CACHE_RESULT_MISS) << 16),
+  branch_miss = static_cast<u64>(PERF_COUNT_HW_CACHE_BPU) | (static_cast<u64>(PERF_COUNT_HW_CACHE_RESULT_MISS) << 16),
+  level1d_prefetch = static_cast<u64>(PERF_COUNT_HW_CACHE_L1D) | (static_cast<u64>(PERF_COUNT_HW_CACHE_OP_PREFETCH) << 8),
+  level1d_prefetch_miss = static_cast<u64>(PERF_COUNT_HW_CACHE_L1D) | (static_cast<u64>(PERF_COUNT_HW_CACHE_OP_PREFETCH) << 8)
+                          | (static_cast<u64>(PERF_COUNT_HW_CACHE_RESULT_MISS) << 16),
+
   none
 };
-}; // namespace options
+};     // namespace options
 
-// struct perf_event_attr {
-//   __u32 type;   /* Type of event */
-//   __u32 size;   /* Size of attribute structure */
-//    __u64 config; /* Type-specific configuration */
+struct time_userland {
+};
 
-//   union {
-//   __u64 sample_period; /* Period of sampling */
-//     __u64 sample_freq;   /* Frequency of sampling */
-//   };
-//
-//   __u64 sample_type; /* Specifies values included in sample */
-//   __u64 read_format; /* Specifies values returned in read */
-//
-//   __u64 disabled : 1,     /* off by default */
-//       inherit : 1,        /* children inherit it */
-//       pinned : 1,         /* must always be on PMU */
-//       exclusive : 1,      /* only group on PMU */
-//       exclude_user : 1,   /* don't count user */
-//       exclude_kernel : 1, /* don't count kernel */
-//       exclude_hv : 1,     /* don't count hypervisor */
-//       exclude_idle : 1,   /* don't count when idle */
-//      mmap : 1,           /* include mmap data */
-//      comm : 1,           /* include comm data */
-//    freq : 1,           /* use freq, not period */
-//       inherit_stat : 1,   /* per task counts */
-//    enable_on_exec : 1, /* next exec enables */
-//       task : 1,           /* trace fork/exit */
-//    watermark : 1,      /* wakeup_watermark */
-//       precise_ip : 2,     /* skid constraint */
-//    mmap_data : 1,      /* non-exec mmap data */
-//   sample_id_all : 1,  /* sample_type all events */
-//      exclude_host : 1,   /* don't count in host */
-//      exclude_guest : 1,  /* don't count in guest */
-//    exclude_callchain_kernel : 1,
-//      /* exclude kernel callchains */
-//    exclude_callchain_user : 1,
-//    /* exclude user callchains */
-//   mmap2 : 1,          /* include mmap with inode data */
-//       comm_exec : 1,      /* flag comm events that are
-//                            due to exec */
-//     use_clockid : 1,    /* use clockid for time fields */
-//       context_switch : 1, /* context switch data */
-//       write_backward : 1, /* Write ring buffer from end
-//                           to beginning */
-//       namespaces : 1,     /* include namespaces data */
-//   ksymbol : 1,        /* include ksymbol events */
-//       bpf_event : 1,      /* include bpf events */
-//    aux_output : 1,     /* generate AUX records
-//                              instead of events */
-//     cgroup : 1,         /* include cgroup events */
-//       text_poke : 1,      /* include text poke events */
-//    build_id : 1,       /* use build id in mmap2 events */
-//       inherit_thread : 1, /* children only inherit */
-//                        /* if cloned with CLONE_THREAD */
-//       remove_on_exec : 1, /* event is removed from task
-//                        on exec */
-//    sigtrap : 1,        /* send synchronous SIGTRAP
-//                     on event */
-//
-//    __reserved_1 : 26;
-//
-//   union {
-//   __u32 wakeup_events;    /* wakeup every n events */
-//     __u32 wakeup_watermark; /* bytes before wakeup */
-//   };
-//     __u32     bp_type;          /* breakpoint type */
-//
-//               union {
-//                  __u64 bp_addr;          /* breakpoint address */
-//                   __u64 kprobe_func;      /* for perf_kprobe */
-//                   __u64 uprobe_path;      /* for perf_uprobe */
-//                   __u64 config1;          /* extension of config */
-//               };
-//
-//             union {
-//               __u64 bp_len;           /* breakpoint length */
-//             __u64 kprobe_addr;      /* with kprobe_func == NULL */
-//           __u64 probe_offset;     /* for perf_[k,u]probe */
-//         __u64 config2;          /* extension of config1 */
-//   };
-//               __u64 branch_sample_type;   /* enum perf_branch_sample_type */
-//             __u64 sample_regs_user;     /* user regs to dump on samples */
-//           __u32 sample_stack_user;    /* size of stack to dump on
-//                                        samples */
-//       __s32 clockid;              /* clock to use for time fields */
-//     __u64 sample_regs_intr;     /* regs to dump on samples */
-//   __u32 aux_watermark;        /* aux bytes before wakeup */
-//               __u16 sample_max_stack;     /* max frames in callchain */
-//             __u16 __reserved_2;         /* align to u64 */
-//           __u32 aux_sample_size;      /* max aux sample size */
-//         __u32 __reserved_3;         /* align to u64 */
-//       __u64 sig_data;             /* user data for sigtrap */
+struct time_kernelland {
+};
 
-struct time_userland {};
-struct time_kernelland {};
-struct time_vmland {};
-struct time_everyland {};
+struct time_vmland {
+};
+
+struct time_everyland {
+};
 
 template <class T, kernel_clock_types R> struct kernel_clock {
   int e_fd;
+  int last_errno = 0;
   struct perf_event_attr event;
-  ~kernel_clock(void) {
-    if (e_fd != -1)
-      ::close(e_fd);
+
+  ~kernel_clock(void)
+  {
+    if ( e_fd != -1 ) micron::close(e_fd);
   }
+
   kernel_clock(const kernel_clock &) = delete;
-  kernel_clock(kernel_clock &&o) : e_fd(o.e_fd), event(std::move(o.event)) {
-    o.e_fd = -1;
+
+  kernel_clock(kernel_clock &&o) : e_fd(o.e_fd), last_errno(o.last_errno), event(micron::move(o.event)) { o.e_fd = -1; }
+
+  auto
+  __get_event(void) const
+  {
+    return event;
   }
-  auto __get_event(void) const { return event; }
+
+  void
+  set_inherit(bool on) noexcept
+  {
+    event.inherit = on ? 1 : 0;
+  }
+
+  void
+  set_pinned(bool on) noexcept
+  {
+    event.pinned = on ? 1 : 0;
+  }
+
+  void
+  set_enable_on_exec(bool on) noexcept
+  {
+    event.enable_on_exec = on ? 1 : 0;
+  }
+
+  int
+  open_error(void) const noexcept
+  {
+    return last_errno;
+  }
+
   template <class P>
-    requires(std::same_as<P, options::hardware> or
-             std::same_as<P, options::software> or
-             std::same_as<P, options::cache>)
-  kernel_clock(P e_type) : e_fd(-1) {
-    std::memset(&event, 0, sizeof(event));
-    // event.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
-    if constexpr (std::same_as<T, time_everyland>) {
+    requires(micron::same_as<P, options::hardware> or micron::same_as<P, options::software> or micron::same_as<P, options::cache>)
+  kernel_clock(P e_type) : e_fd(-1)
+  {
+    micron::memset(&event, 0, sizeof(event));
+    event.read_format = PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING;
+    if constexpr ( micron::same_as<T, time_everyland> ) {
       event.size = sizeof(event);
-      if constexpr (R == kernel_clock_types::hardware) {
+      if constexpr ( R == kernel_clock_types::hardware ) {
         event.type = PERF_TYPE_HARDWARE;
         event.disabled = 1;
         event.pinned = 1;
 
-        if constexpr (std::is_same_v<P, options::hardware>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::hardware> ) event.config = static_cast<__u64>(e_type);
       }
-      if constexpr (R == kernel_clock_types::software) {
+      if constexpr ( R == kernel_clock_types::software ) {
         event.type = PERF_TYPE_SOFTWARE;
         event.disabled = 1;
         event.pinned = 1;
 
         event.exclude_hv = 1;
 
-        if constexpr (std::is_same_v<P, options::software>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::software> ) event.config = static_cast<__u64>(e_type);
       }
-      if constexpr (R == kernel_clock_types::tracepoint) {
+      if constexpr ( R == kernel_clock_types::tracepoint ) {
         event.type = PERF_TYPE_TRACEPOINT;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_hv = 1;
       }
-      if constexpr (R == kernel_clock_types::cache) {
+      if constexpr ( R == kernel_clock_types::cache ) {
         event.type = PERF_TYPE_HW_CACHE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_hv = 1;
-        if constexpr (std::is_same_v<P, options::cache>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::cache> ) event.config = static_cast<__u64>(e_type);
       }
     }
 
-    if constexpr (std::same_as<T, time_kernelland>) {
+    if constexpr ( micron::same_as<T, time_kernelland> ) {
       event.size = sizeof(event);
-      if constexpr (R == kernel_clock_types::hardware) {
+      if constexpr ( R == kernel_clock_types::hardware ) {
         event.type = PERF_TYPE_HARDWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_hv = 1;
 
-        if constexpr (std::is_same_v<P, options::hardware>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::hardware> ) event.config = static_cast<__u64>(e_type);
       }
-      if constexpr (R == kernel_clock_types::software) {
+      if constexpr ( R == kernel_clock_types::software ) {
         event.type = PERF_TYPE_SOFTWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_hv = 1;
-        if constexpr (std::is_same_v<P, options::software>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::software> ) event.config = static_cast<__u64>(e_type);
       }
-      if constexpr (R == kernel_clock_types::tracepoint) {
+      if constexpr ( R == kernel_clock_types::tracepoint ) {
         event.type = PERF_TYPE_TRACEPOINT;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_hv = 1;
       }
-      if constexpr (R == kernel_clock_types::cache) {
+      if constexpr ( R == kernel_clock_types::cache ) {
         event.type = PERF_TYPE_HW_CACHE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_hv = 1;
-        if constexpr (std::is_same_v<P, options::cache>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::cache> ) event.config = static_cast<__u64>(e_type);
       }
     }
 
-    if constexpr (std::same_as<T, time_userland>) {
+    if constexpr ( micron::same_as<T, time_userland> ) {
       event.size = sizeof(event);
-      if constexpr (R == kernel_clock_types::hardware) {
+      if constexpr ( R == kernel_clock_types::hardware ) {
         event.type = PERF_TYPE_HARDWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_kernel = 1;
         event.exclude_hv = 1;
 
-        if constexpr (std::is_same_v<P, options::hardware>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::hardware> ) event.config = static_cast<__u64>(e_type);
       }
-      if constexpr (R == kernel_clock_types::software) {
+      if constexpr ( R == kernel_clock_types::software ) {
         event.type = PERF_TYPE_SOFTWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_kernel = 1;
         event.exclude_hv = 1;
-        if constexpr (std::is_same_v<P, options::software>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::software> ) event.config = static_cast<__u64>(e_type);
       }
-      if constexpr (R == kernel_clock_types::tracepoint) {
+      if constexpr ( R == kernel_clock_types::tracepoint ) {
         event.type = PERF_TYPE_TRACEPOINT;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_kernel = 1;
         event.exclude_hv = 1;
       }
-      if constexpr (R == kernel_clock_types::cache) {
+      if constexpr ( R == kernel_clock_types::cache ) {
         event.type = PERF_TYPE_HW_CACHE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_kernel = 1;
         event.exclude_hv = 1;
-        if constexpr (std::is_same_v<P, options::cache>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::cache> ) event.config = static_cast<__u64>(e_type);
       }
     }
 
-    if constexpr (std::same_as<T, time_vmland>) {
+    if constexpr ( micron::same_as<T, time_vmland> ) {
       event.size = sizeof(event);
-      if constexpr (R == kernel_clock_types::hardware) {
+      if constexpr ( R == kernel_clock_types::hardware ) {
         event.type = PERF_TYPE_HARDWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_kernel = 1;
 
-        if constexpr (std::is_same_v<P, options::hardware>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::hardware> ) event.config = static_cast<__u64>(e_type);
       }
-      if constexpr (R == kernel_clock_types::software) {
+      if constexpr ( R == kernel_clock_types::software ) {
         event.type = PERF_TYPE_SOFTWARE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_kernel = 1;
-        if constexpr (std::is_same_v<P, options::software>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::software> ) event.config = static_cast<__u64>(e_type);
       }
-      if constexpr (R == kernel_clock_types::tracepoint) {
+      if constexpr ( R == kernel_clock_types::tracepoint ) {
         event.type = PERF_TYPE_TRACEPOINT;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_kernel = 1;
       }
-      if constexpr (R == kernel_clock_types::cache) {
+      if constexpr ( R == kernel_clock_types::cache ) {
         event.type = PERF_TYPE_HW_CACHE;
         event.disabled = 1;
         event.pinned = 1;
         event.exclude_user = 1;
         event.exclude_kernel = 1;
-        if constexpr (std::is_same_v<P, options::cache>)
-          event.config = static_cast<__u64>(e_type);
+        if constexpr ( micron::is_same_v<P, options::cache> ) event.config = static_cast<__u64>(e_type);
       }
     }
   }
 
-  int reopen(pid_t pid) {
-    if(e_fd != -1)
-      ::close(e_fd);
-    e_fd = static_cast<int>(perf_event_pid(event, pid)); // stop the complaining
-    if (e_fd == -1)
-      return -1; // ERROR
+  int
+  reopen(pid_t pid)
+  {
+    if ( e_fd != -1 ) micron::close(e_fd);
+    e_fd = static_cast<int>(perf_event_pid(event, pid));
+    if ( e_fd == -1 ) {
+      last_errno = errno;
+      return -1;
+    }
+    last_errno = 0;
     return e_fd;
   }
-  int reopen(void) {
-    ::close(e_fd);
-    e_fd = static_cast<int>(perf_event_this(event)); // stop the complaining
-    if (e_fd == -1)
-      return -1; // ERROR
+
+  int
+  reopen(void)
+  {
+    if ( e_fd != -1 ) micron::close(e_fd);
+    e_fd = static_cast<int>(perf_event_this(event));
+    if ( e_fd == -1 ) {
+      last_errno = errno;
+      return -1;
+    }
+    last_errno = 0;
     return e_fd;
   }
-  int open(pid_t pid) {
-    e_fd = static_cast<int>(perf_event_pid(event, pid)); // stop the complaining
-    if (e_fd == -1)
-      return -1; // ERROR
+
+  int
+  open(pid_t pid)
+  {
+    e_fd = static_cast<int>(perf_event_pid(event, pid));
+    if ( e_fd == -1 ) {
+      last_errno = errno;
+      return -1;
+    }
+    last_errno = 0;
     return e_fd;
   }
-  int open(void) {
-    e_fd = static_cast<int>(perf_event_this(event)); // stop the complaining
-    if (e_fd == -1)
-      return -1; // ERROR
+
+  int
+  open(void)
+  {
+    e_fd = static_cast<int>(perf_event_this(event));
+    if ( e_fd == -1 ) {
+      last_errno = errno;
+      return -1;
+    }
+    last_errno = 0;
     return e_fd;
-  }
-  template <typename X = T>
-  inline __attribute__((always_inline)) void start(void) {
-    ::ioctl(e_fd, PERF_EVENT_IOC_RESET, 0);
-    ::ioctl(e_fd, PERF_EVENT_IOC_ENABLE, 0);
-  }
-  template <typename X = T>
-  inline __attribute__((always_inline)) void start_as_leader(void) {
-    ::ioctl(e_fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);
-    ::ioctl(e_fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);
-  }
-  template <typename X = T>
-  inline __attribute__((always_inline)) void stop(void) {
-    ::ioctl(e_fd, PERF_EVENT_IOC_DISABLE, 0);
   }
 
   template <typename X = T>
-  inline __attribute__((always_inline)) void stop_as_leader(void) {
-    ::ioctl(e_fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
+  inline __attribute__((always_inline)) void
+  start(void)
+  {
+    micron::posix::ioctl(e_fd, PERF_EVENT_IOC_RESET, 0);
+    micron::posix::ioctl(e_fd, PERF_EVENT_IOC_ENABLE, 0);
   }
-  long long read(void) {
-    long long x = 0;
-    ::read(e_fd, &x, sizeof(x));
-    return x;
+
+  template <typename X = T>
+  inline __attribute__((always_inline)) void
+  start_as_leader(void)
+  {
+    micron::posix::ioctl(e_fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);
+    micron::posix::ioctl(e_fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);
+  }
+
+  template <typename X = T>
+  inline __attribute__((always_inline)) void
+  stop(void)
+  {
+    micron::posix::ioctl(e_fd, PERF_EVENT_IOC_DISABLE, 0);
+  }
+
+  template <typename X = T>
+  inline __attribute__((always_inline)) void
+  stop_as_leader(void)
+  {
+    micron::posix::ioctl(e_fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
+  }
+
+  struct read_result {
+    u64 value;
+    u64 time_enabled;
+    u64 time_running;
+  };
+
+  inline read_result
+  __read_triplet(void)
+  {
+    read_result r{ 0, 0, 0 };
+    if ( e_fd == -1 ) return r;
+    micron::posix::read(e_fd, &r, sizeof(r));
+    return r;
+  }
+
+  long long
+  read_raw(void)
+  {
+    return static_cast<long long>(__read_triplet().value);
+  }
+
+  long long
+  read(void)
+  {
+    auto t = __read_triplet();
+    if ( t.time_running == 0 ) return 0;
+    if ( t.time_running == t.time_enabled ) return static_cast<long long>(t.value);
+    const double scale = static_cast<double>(t.time_enabled) / static_cast<double>(t.time_running);
+    return static_cast<long long>(static_cast<double>(t.value) * scale);
   }
 };
 
 enum class system_clocks : clockid_t {
-  realtime_set = CLOCK_REALTIME,
-  realtime = CLOCK_REALTIME_ALARM,
-  realtime_coarse = CLOCK_REALTIME_COARSE,
-  taitime = CLOCK_TAI,
-  monotonic = CLOCK_MONOTONIC,
-  monotonic_coarse = CLOCK_MONOTONIC_COARSE,
-  monotonic_raw = CLOCK_MONOTONIC_RAW,
-  since_boot = CLOCK_BOOTTIME,
-  cputime = CLOCK_PROCESS_CPUTIME_ID,
-  cputime_this = CLOCK_THREAD_CPUTIME_ID
+  realtime_set = micron::clock_realtime,
+  realtime = micron::clock_realtime_alarm,
+  realtime_coarse = micron::clock_realtime_coarse,
+  taitime = micron::clock_tai,
+  monotonic = micron::clock_monotonic,
+  monotonic_coarse = micron::clock_monotonic_coarse,
+  monotonic_raw = micron::clock_monotonic_raw,
+  since_boot = micron::clock_boottime,
+  cputime = micron::clock_process_cputime_id,
+  cputime_this = micron::clock_thread_cputime_id
 };
 
 // clock meant to get general time
 template <system_clocks C = system_clocks::realtime> struct system_clock {
-  struct timespec time_begin;
-  struct timespec time_end;
-  system_clock(options::hardware) {
-    std::memset(&time_begin, 0x0, sizeof(timespec));
-    std::memset(&time_end, 0x0, sizeof(timespec));
-    if (::clock_gettime((clockid_t)C, &time_begin) == -1)
-      throw std::runtime_error("bbench clock failed to get time");
+  micron::timespec_t time_begin;
+  micron::timespec_t time_end;
+
+  system_clock(options::hardware)
+  {
+    micron::memset(&time_begin, 0x0, sizeof(micron::timespec_t));
+    micron::memset(&time_end, 0x0, sizeof(micron::timespec_t));
+    if ( micron::clock_gettime(static_cast<clockid_t>(C), time_begin) == -1 )
+      micron::exc<micron::except::runtime_error>("bbench clock failed to get time");
   }
-  system_clock() {
-    std::memset(&time_begin, 0x0, sizeof(timespec));
-    std::memset(&time_end, 0x0, sizeof(timespec));
-    if (::clock_gettime((clockid_t)C, &time_begin) == -1)
-      throw std::runtime_error("bbench clock failed to get time");
+
+  system_clock()
+  {
+    micron::memset(&time_begin, 0x0, sizeof(micron::timespec_t));
+    micron::memset(&time_end, 0x0, sizeof(micron::timespec_t));
+    if ( micron::clock_gettime(static_cast<clockid_t>(C), time_begin) == -1 )
+      micron::exc<micron::except::runtime_error>("bbench clock failed to get time");
   }
-  inline __attribute__((always_inline)) void start(void) {
-    if (::clock_gettime((clockid_t)C, &time_begin) == -1)
-      throw std::runtime_error("bbench clock failed to get time");
+
+  inline __attribute__((always_inline)) void
+  start(void)
+  {
+    if ( micron::clock_gettime(static_cast<clockid_t>(C), time_begin) == -1 )
+      micron::exc<micron::except::runtime_error>("bbench clock failed to get time");
   }
-  inline __attribute__((always_inline)) auto start_get(void) -> timespec {
-    if (::clock_gettime((clockid_t)C, &time_begin) == -1)
-      throw std::runtime_error("bbench clock failed to get time");
+
+  inline __attribute__((always_inline)) auto
+  start_get(void) -> micron::timespec_t
+  {
+    if ( micron::clock_gettime(static_cast<clockid_t>(C), time_begin) == -1 )
+      micron::exc<micron::except::runtime_error>("bbench clock failed to get time");
     return time_begin;
   }
-  inline __attribute__((always_inline)) void stop(void) {
-    if (::clock_gettime((clockid_t)C, &time_end) == -1)
-      throw std::runtime_error("bbench clock failed to get time");
+
+  inline __attribute__((always_inline)) void
+  stop(void)
+  {
+    if ( micron::clock_gettime(static_cast<clockid_t>(C), time_end) == -1 )
+      micron::exc<micron::except::runtime_error>("bbench clock failed to get time");
   }
-  inline __attribute__((always_inline)) auto stop_get(void) -> timespec {
-    if (::clock_gettime((clockid_t)C, &time_end) == -1)
-      throw std::runtime_error("bbench clock failed to get time");
+
+  inline __attribute__((always_inline)) auto
+  stop_get(void) -> micron::timespec_t
+  {
+    if ( micron::clock_gettime(static_cast<clockid_t>(C), time_end) == -1 )
+      micron::exc<micron::except::runtime_error>("bbench clock failed to get time");
     return time_end;
   }
-  inline __attribute__((always_inline)) static auto now(void) -> double {
-    struct timespec t;
-    if (::clock_gettime((clockid_t)C, &t) == -1)
-      throw std::runtime_error("bbench clock failed to get time");
-    auto sec = t.tv_sec;
-    auto msec = (t.tv_nsec) / 1000000000;
-    return static_cast<double>(sec) + static_cast<double>(msec);
+
+  inline __attribute__((always_inline)) static auto
+  now(void) -> double
+  {
+    micron::timespec_t t;
+    if ( micron::clock_gettime(static_cast<clockid_t>(C), t) == -1 )
+      micron::exc<micron::except::runtime_error>("bbench clock failed to get time");
+    auto sec = static_cast<double>(t.tv_sec);
+    auto ns = static_cast<double>(t.tv_nsec);
+    return sec + ns / 1e9;
   }
-  auto read(const timespec &t) -> double {
-    auto sec = t.tv_sec - time_begin.tv_sec;
-    auto msec = (t.tv_nsec - time_begin.tv_nsec) / 1000000000;
-    return static_cast<double>(sec) + static_cast<double>(msec);
+
+  auto
+  read(const micron::timespec_t &t) -> double
+  {
+    auto sec = static_cast<f64>(t.tv_sec - time_begin.tv_sec);
+    auto ns = static_cast<f64>(t.tv_nsec - time_begin.tv_nsec);
+    return sec + ns / 1e9;
   }
-  auto read_ms(const timespec &t) -> double {
-    auto sec = t.tv_sec - time_begin.tv_sec;
-    auto msec = (t.tv_nsec - time_begin.tv_nsec) / 1000000;
-    return chrono::milliseconds(static_cast<double>(sec)) +
-           static_cast<double>(msec);
+
+  auto
+  read_ms(const micron::timespec_t &t) -> double
+  {
+    auto sec = static_cast<f64>(t.tv_sec - time_begin.tv_sec);
+    auto ns = static_cast<f64>(t.tv_nsec - time_begin.tv_nsec);
+    return micron::milliseconds(sec) + ns / 1e6;
   }
-  auto read(const timespec &t, const timespec &ts) -> double {
-    auto sec = t.tv_sec - ts.tv_sec;
-    auto msec = (t.tv_nsec - ts.tv_nsec) / 1000000000;
-    return static_cast<double>(sec) + static_cast<double>(msec);
+
+  auto
+  read(const micron::timespec_t &t, const micron::timespec_t &ts) -> double
+  {
+    auto sec = static_cast<f64>(t.tv_sec - ts.tv_sec);
+    auto ns = static_cast<f64>(t.tv_nsec - ts.tv_nsec);
+    return sec + ns / 1e9;
   }
-  auto read_ms(const timespec &t, const timespec &ts) -> double {
-    auto sec = t.tv_sec - ts.tv_sec;
-    auto msec = (t.tv_nsec - ts.tv_nsec) / 1000000;
-    return chrono::milliseconds(static_cast<double>(sec)) +
-           static_cast<double>(msec);
+
+  auto
+  read_ms(const micron::timespec_t &t, const micron::timespec_t &ts) -> double
+  {
+    auto sec = static_cast<f64>(t.tv_sec - ts.tv_sec);
+    auto ns = static_cast<f64>(t.tv_nsec - ts.tv_nsec);
+    return micron::milliseconds(sec) + ns / 1e6;
   }
-  auto read(void) -> double {
-    auto sec = time_end.tv_sec - time_begin.tv_sec;
-    auto msec = (time_end.tv_nsec - time_begin.tv_nsec) / 1000000000;
-    return static_cast<double>(sec) + static_cast<double>(msec);
+
+  auto
+  read(void) -> double
+  {
+    auto sec = static_cast<f64>(time_end.tv_sec - time_begin.tv_sec);
+    auto ns = static_cast<f64>(time_end.tv_nsec - time_begin.tv_nsec);
+    return sec + ns / 1e9;
   }
-  auto read_ds(void) -> double {
-    auto sec = (time_end.tv_sec - time_begin.tv_sec) / 10;
-    auto msec = (time_end.tv_nsec - time_begin.tv_nsec) / 100000000;
-    return static_cast<double>(sec) + static_cast<double>(msec);
+
+  auto
+  read_ds(void) -> double
+  {
+    return read() * 10.0;
   }
-  auto read_ms(void) -> double {
-    auto sec = time_end.tv_sec - time_begin.tv_sec;
-    auto msec = (time_end.tv_nsec - time_begin.tv_nsec) / 1000000;
-    return chrono::milliseconds(static_cast<double>(sec)) +
-           static_cast<double>(msec);
+
+  auto
+  read_ms(void) -> double
+  {
+    auto sec = static_cast<f64>(time_end.tv_sec - time_begin.tv_sec);
+    auto ns = static_cast<f64>(time_end.tv_nsec - time_begin.tv_nsec);
+    return micron::milliseconds(sec) + ns / 1e6;
   }
-  auto read_us(void) -> double {
-    auto sec = time_end.tv_sec - time_begin.tv_sec;
-    auto msec = (time_end.tv_nsec - time_begin.tv_nsec) / 1000;
-    return chrono::microseconds(static_cast<double>(sec)) +
-           static_cast<double>(msec);
+
+  auto
+  read_us(void) -> double
+  {
+    auto sec = static_cast<f64>(time_end.tv_sec - time_begin.tv_sec);
+    auto ns = static_cast<f64>(time_end.tv_nsec - time_begin.tv_nsec);
+    return micron::microseconds(sec) + ns / 1e3;
   }
-  auto read_ns(void) -> double {
-    auto sec = time_end.tv_sec - time_begin.tv_sec;
-    auto msec = (time_end.tv_nsec - time_begin.tv_nsec);
-    return chrono::nanoseconds(static_cast<double>(sec)) +
-           static_cast<double>(msec);
+
+  auto
+  read_ns(void) -> double
+  {
+    auto sec = static_cast<f64>(time_end.tv_sec - time_begin.tv_sec);
+    auto ns = static_cast<f64>(time_end.tv_nsec - time_begin.tv_nsec);
+    return micron::nanoseconds(sec) + ns;
   }
 };
 
-}; // namespace bbench
+};     // namespace bbench
